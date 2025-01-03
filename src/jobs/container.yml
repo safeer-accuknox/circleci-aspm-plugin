@@ -41,8 +41,10 @@ parameters:
   ACCUKNOX_LABEL:
     description: "The label created in AccuKnox SaaS for associating scan results."
     type: string
-executor: container-scan
+executor: container
 steps:
+  - setup_remote_docker:
+      docker_layer_caching: true
   - container-scan:
       DOCKERFILE: <<parameters.DOCKERFILE>>
       BUILD_CONTEXT: <<parameters.BUILD_CONTEXT>>

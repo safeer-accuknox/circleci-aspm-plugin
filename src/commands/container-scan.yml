@@ -55,9 +55,9 @@ steps:
         BUILD_CONTEXT: <<parameters.BUILD_CONTEXT>>
       command: |
         if [ -z "$TAG" ]; then
-          TAG=$CIRCLE_BUILD_NUM
+          TAG=$CI_JOB_ID
         fi
-        docker build -t $IMAGE_NAME:$TAG -f $DOCKERFILE $BUILD_CONTEXT
+        docker buildx build -t $IMAGE_NAME:$TAG -f $DOCKERFILE $BUILD_CONTEXT
         echo "export DOCKER_IMAGE=$DOCKER_IMAGE" >> $BASH_ENV
   - run:
       name: Scan Docker image
