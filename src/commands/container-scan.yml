@@ -55,9 +55,10 @@ steps:
         BUILD_CONTEXT: <<parameters.BUILD_CONTEXT>>
       command: |
         if [ -z "$TAG" ]; then
-          TAG=$CI_JOB_ID
+          TAG=$CIRCLE_SHA1
         fi
-        docker buildx build -t $IMAGE_NAME:$TAG -f $DOCKERFILE $BUILD_CONTEXT
+        DOCKER_IMAGE=$IMAGE_NAME:$TAG
+        docker buildx build -t $DOCKER_IMAGE -f $DOCKERFILE $BUILD_CONTEXT
         echo "export DOCKER_IMAGE=$DOCKER_IMAGE" >> $BASH_ENV
   - run:
       name: Scan Docker image
@@ -66,6 +67,7 @@ steps:
         ADDITIONAL_ARGUMENTS: <<parameters.ADDITIONAL_ARGUMENTS>>
       command: |
         set +e  # Allow commands to fail without stopping the script
+        echo trivy image $ADDITIONAL_ARGUMENTS --exit-code 1 --severity $SEVERITY -f json $DOCKER_IMAGE -o results.json --quiet
         trivy image $ADDITIONAL_ARGUMENTS --exit-code 1 --severity $SEVERITY -f json $DOCKER_IMAGE -o results.json --quiet
         TRIVY_EXIT_CODE=$?
         echo "export TRIVY_EXIT_CODE=$TRIVY_EXIT_CODE" >> $BASH_ENV

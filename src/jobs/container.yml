@@ -43,6 +43,7 @@ parameters:
     type: string
 executor: container
 steps:
+  - checkout
   - setup_remote_docker:
       docker_layer_caching: true
   - container-scan:
