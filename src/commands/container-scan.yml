@@ -30,7 +30,7 @@ parameters:
     type: boolean
 steps:
   - run:
-      name: Download Scanner
+      name: Validation
       command: |
         if [[ -z "$ACCUKNOX_ENDPOINT" || -z "$ACCUKNOX_TENANT" || -z "$ACCUKNOX_LABEL" || -z "$ACCUKNOX_TOKEN" ]]; then
           echo "Error: One or more required environment variables are empty."
