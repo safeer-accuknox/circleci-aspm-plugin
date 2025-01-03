@@ -31,7 +31,7 @@ parameters:
     default: "cspm.demo.accuknox.com"
   ACCUKNOX_LABEL:
     description: "The label created in AccuKnox SaaS for associating scan results."
-executor: container
+executor: container-scan
 steps:
   - container-scan:
       DOCKERFILE: <<parameters.DOCKERFILE>>
