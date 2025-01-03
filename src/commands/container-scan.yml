@@ -28,20 +28,17 @@ parameters:
     description: "Do not return an error code if there are failed checks"
     default: true
     type: boolean
-  ACCUKNOX_TOKEN:
-    description: "The token for authenticating with the CSPM panel."
-    type: string
-  ACCUKNOX_TENANT:
-    description: "The ID of the tenant associated with the CSPM panel."
-    type: string
-  ACCUKNOX_ENDPOINT:
-    description: "The URL of the CSPM panel to push the scan results to."
-    default: "cspm.demo.accuknox.com"
-    type: string
-  ACCUKNOX_LABEL:
-    description: "The label created in AccuKnox SaaS for associating scan results."
-    type: string
 steps:
+  - run:
+      name: Download Scanner
+      command: |
+        if [[ -z "$ACCUKNOX_ENDPOINT" || -z "$ACCUKNOX_TENANT" || -z "$ACCUKNOX_LABEL" || -z "$ACCUKNOX_TOKEN" ]]; then
+          echo "Error: One or more required environment variables are empty."
+          echo "Please set ACCUKNOX_ENDPOINT, ACCUKNOX_TENANT, ACCUKNOX_LABEL, and ACCUKNOX_TOKEN."
+          exit 1
+        else
+          echo "All required environment variables are set."
+        fi
   - run:
       name: Download Scanner
       command: |
@@ -73,11 +70,6 @@ steps:
         echo "export TRIVY_EXIT_CODE=$TRIVY_EXIT_CODE" >> $BASH_ENV
   - run:
       name: Uploading Results
-      environment:
-        ACCUKNOX_ENDPOINT: <<parameters.ACCUKNOX_ENDPOINT>>
-        ACCUKNOX_TENANT: <<parameters.ACCUKNOX_TENANT>>
-        ACCUKNOX_LABEL: <<parameters.ACCUKNOX_LABEL>>
-        ACCUKNOX_TOKEN: <<parameters.ACCUKNOX_TOKEN>>
       command: |
         curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=TR&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form 'file=@"results.json"'
   - run:
