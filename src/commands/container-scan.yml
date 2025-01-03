@@ -1,0 +1,79 @@
+description: >
+  Accuknox Container Scan
+parameters:
+  DOCKERFILE:
+    description: "The Dockerfile path relatively to build context."
+    default: "Dockerfile"
+  BUILD_CONTEXT:
+    description: "The context of the Dockerfile to use for building the image."
+    default: "."
+  IMAGE_NAME:
+    description: "Docker image name"
+  TAG:
+    description: "Do not display code blocks in output"
+    default: ""
+  ADDITIONAL_ARGUMENTS:
+    description: "Extra params for container scanning"
+    default: ""
+  SEVERITY:
+    description: "Allows selection of severity level for the scan. Options include UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL. If specified, the scan will target vulnerabilities of the selected severity level."
+    default: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+  ACCUKNOX_TOKEN:
+    description: "The token for authenticating with the CSPM panel."
+  ACCUKNOX_TENANT:
+    description: "The ID of the tenant associated with the CSPM panel."
+  ACCUKNOX_ENDPOINT:
+    description: "The URL of the CSPM panel to push the scan results to."
+    default: "cspm.demo.accuknox.com"
+  ACCUKNOX_LABEL:
+    description: "The label created in AccuKnox SaaS for associating scan results."
+steps:
+  - run:
+      name: Download Scanner
+      command: |
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+  - run:
+      name: Build Docker image
+      environment:
+        IMAGE_NAME: <<parameters.IMAGE_NAME>>
+        TAG: <<parameters.TAG>>
+        DOCKERFILE: <<parameters.DOCKERFILE>>
+        BUILD_CONTEXT: <<parameters.BUILD_CONTEXT>>
+      command: |
+        if [ -z "$TAG" ]; then
+          TAG=$CIRCLE_BUILD_NUM
+        fi
+        docker build -t $IMAGE_NAME:$TAG -f $DOCKERFILE $BUILD_CONTEXT
+        echo "export DOCKER_IMAGE=$DOCKER_IMAGE" >> $BASH_ENV
+  - run:
+      name: Scan Docker image
+      environment:
+        SEVERITY: <<parameters.SEVERITY>>
+        ADDITIONAL_ARGUMENTS: <<parameters.ADDITIONAL_ARGUMENTS>>
+      command: |
+        set +e  # Allow commands to fail without stopping the script
+        trivy image $ADDITIONAL_ARGUMENTS --exit-code 1 --severity $SEVERITY -f json $DOCKER_IMAGE -o results.json --quiet
+        TRIVY_EXIT_CODE=$?
+        echo "export TRIVY_EXIT_CODE=$TRIVY_EXIT_CODE" >> $BASH_ENV
+  - run:
+      name: Uploading Results
+      environment:
+        ACCUKNOX_ENDPOINT: <<parameters.ACCUKNOX_ENDPOINT>>
+        ACCUKNOX_TENANT: <<parameters.ACCUKNOX_TENANT>>
+        ACCUKNOX_LABEL: <<parameters.ACCUKNOX_LABEL>>
+        ACCUKNOX_TOKEN: <<parameters.ACCUKNOX_TOKEN>>
+      command: |
+        curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=TR&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form 'file=@"results.json"'
+  - run:
+      name: Failing Pipeline If Scan Failed
+      environment:
+        INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      command: |
+        if [ "$TRIVY_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" != "true" ]; then
+          echo "Scan failed. Exiting with failure."
+          exit 1
+        fi

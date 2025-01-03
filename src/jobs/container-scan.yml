@@ -1,0 +1,47 @@
+description: >
+  Accuknox Container Scan
+parameters:
+  DOCKERFILE:
+    description: "The Dockerfile path relatively to build context."
+    default: "Dockerfile"
+  BUILD_CONTEXT:
+    description: "The context of the Dockerfile to use for building the image."
+    default: "."
+  IMAGE_NAME:
+    description: "Docker image name"
+  TAG:
+    description: "Docker image tag name"
+    default: ""
+  ADDITIONAL_ARGUMENTS:
+    description: "Extra params for container scanning"
+    default: ""
+  SEVERITY:
+    description: "Allows selection of severity level for the scan. Options include UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL. If specified, the scan will target vulnerabilities of the selected severity level."
+    default: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+  ACCUKNOX_TOKEN:
+    description: "The token for authenticating with the CSPM panel."
+  ACCUKNOX_TENANT:
+    description: "The ID of the tenant associated with the CSPM panel."
+  ACCUKNOX_ENDPOINT:
+    description: "The URL of the CSPM panel to push the scan results to."
+    default: "cspm.demo.accuknox.com"
+  ACCUKNOX_LABEL:
+    description: "The label created in AccuKnox SaaS for associating scan results."
+executor: container
+steps:
+  - container-scan:
+      DOCKERFILE: <<parameters.DOCKERFILE>>
+      BUILD_CONTEXT: <<parameters.BUILD_CONTEXT>>
+      IMAGE_NAME: <<parameters.IMAGE_NAME>>
+      TAG: <<parameters.TAG>>
+      ADDITIONAL_ARGUMENTS: <<parameters.ADDITIONAL_ARGUMENTS>>
+      SEVERITY: <<parameters.SEVERITY>>
+      INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      ACCUKNOX_TOKEN: <<parameters.ACCUKNOX_TOKEN>>
+      ACCUKNOX_TENANT: <<parameters.ACCUKNOX_TENANT>>
+      ACCUKNOX_ENDPOINT: <<parameters.ACCUKNOX_ENDPOINT>>
+      ACCUKNOX_LABEL: <<parameters.ACCUKNOX_LABEL>>
