@@ -1,4 +1,4 @@
 description: >
-  Executor for Accuknox conatiner scan
+  Executor for Accuknox container scan
 docker:
   - image: 'cimg/base:current' 

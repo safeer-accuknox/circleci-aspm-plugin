@@ -1,0 +1,4 @@
+description: >
+  Executor for Accuknox IAC scan
+docker:
+  - image: 'ghcr.io/bridgecrewio/checkov:3.2.21' 

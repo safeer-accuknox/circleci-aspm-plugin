@@ -1,0 +1,139 @@
+description: >
+  Accuknox IAC Scan
+parameters:
+  INPUT_FILE:
+    description: 'Specify a file for scanning; cannot be used with directory input. Filter runners by file type, e.g., ".tf" for Terraform.'
+    default: ""
+    type: string
+  INPUT_DIRECTORY:
+    description: 'Directory with infrastructure code and/or package manager files to scan'
+    default: "."
+    type: string
+  INPUT_COMPACT:
+    description: "Do not display code blocks in output"
+    default: true
+    type: boolean
+  INPUT_QUIET:
+    description: "Display only failed checks"
+    default: true
+    type: boolean
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+  INPUT_FRAMEWORK:
+    description: "Run only on a specific infrastructure, Supported: Kubernetes & Terraform"
+    default: ""
+    type: string
+steps:
+  - run:
+      name: Validation
+      command: |
+        if [[ -z "$ACCUKNOX_ENDPOINT" || -z "$ACCUKNOX_TENANT" || -z "$ACCUKNOX_LABEL" || -z "$ACCUKNOX_TOKEN" ]]; then
+          echo "Error: One or more required environment variables are empty."
+          echo "Please set ACCUKNOX_ENDPOINT, ACCUKNOX_TENANT, ACCUKNOX_LABEL, and ACCUKNOX_TOKEN."
+          exit 1
+        else
+          echo "All required environment variables are set."
+        fi
+  - run:
+      name: Prerequisites
+      command: |
+        apt -qq update -y
+        apt install -y jq curl
+  - run:
+      name: IAC Scan
+      environment:
+        INPUT_FILE: <<parameters.INPUT_FILE>>
+        INPUT_DIRECTORY: <<parameters.INPUT_DIRECTORY>>
+        INPUT_COMPACT: <<parameters.INPUT_COMPACT>>
+        INPUT_QUIET: <<parameters.INPUT_QUIET>>
+        INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+        INPUT_FRAMEWORK: <<parameters.INPUT_FRAMEWORK>>
+        OUTPUT_FORMAT: "json"
+        OUTPUT_FILE_PATH: "./results"
+      command: |
+        set +e  # Allow commands to fail without stopping the script
+        # Initialize command
+        CHECKOV_CMD="checkov"
+
+        echo "INPUT_FILE: $INPUT_FILE"
+        echo "INPUT_DIRECTORY: $INPUT_DIRECTORY"
+        echo "INPUT_COMPACT: $INPUT_COMPACT"
+        echo "INPUT_QUIET: $INPUT_QUIET"
+        echo "OUTPUT_FORMAT: $OUTPUT_FORMAT"
+        echo "OUTPUT_FILE_PATH: $OUTPUT_FILE_PATH"
+
+
+        # Check if INPUT_FILE is provided
+        if [ "$INPUT_FILE" != "" ]; then
+          CHECKOV_CMD="$CHECKOV_CMD -f $INPUT_FILE"
+        fi
+
+        # If INPUT_COMPACT is true, add --compact
+        if [ "$INPUT_COMPACT" = true ]; then
+          CHECKOV_CMD="$CHECKOV_CMD --compact"
+        fi
+
+        # If INPUT_QUIET is true, add --quiet
+        if [ "$INPUT_QUIET" = true ]; then
+          CHECKOV_CMD="$CHECKOV_CMD --quiet"
+        fi
+
+        # Check if OUTPUT_FORMAT is provided
+        if [ "$OUTPUT_FORMAT" != "" ]; then
+          CHECKOV_CMD="$CHECKOV_CMD -o $OUTPUT_FORMAT"
+        fi
+
+        # Set the output file path
+        if [ "$OUTPUT_FILE_PATH" != "" ]; then
+          CHECKOV_CMD="$CHECKOV_CMD --output-file-path $OUTPUT_FILE_PATH"
+        fi
+
+        # If INPUT_SOFT_FAIL is true, add --soft-fail
+        if [ "$INPUT_SOFT_FAIL" = true ]; then
+          CHECKOV_CMD="$CHECKOV_CMD --soft-fail"
+        fi
+
+        # If INPUT_FRAMEWORK is provided, add --framework
+        if [ -n "$INPUT_FRAMEWORK" ]; then
+          CHECKOV_CMD="$CHECKOV_CMD --framework $INPUT_FRAMEWORK"
+        fi
+
+        # Final command execution
+        if [ "$INPUT_FILE" != "" ]; then
+          echo "Scanning file: $INPUT_FILE"
+          $CHECKOV_CMD
+          CHECKOV_EXIT_CODE=$?
+        elif [ -n "$INPUT_DIRECTORY" ]; then
+          echo "Scanning directory: $INPUT_DIRECTORY"
+          CHECKOV_CMD="$CHECKOV_CMD -d $INPUT_DIRECTORY"
+          $CHECKOV_CMD
+          CHECKOV_EXIT_CODE=$?
+        else
+          echo "No valid file or directory specified for scan."
+          exit 1
+        fi
+        echo "command: $CHECKOV_CMD"
+        echo "export CHECKOV_EXIT_CODE=$CHECKOV_EXIT_CODE" >> $BASH_ENV
+  - run:
+      name: Processing Results
+      command: |
+        RESULT_FILE="results/results_json.json"
+        if jq -e 'type == "object"' $RESULT_FILE > /dev/null 2>&1; then
+          jq '[.]' $RESULT_FILE > temp.json && mv temp.json $RESULT_FILE
+        fi
+        jq --arg repoLink "${CI_PROJECT_URL}" --arg branch "${CI_COMMIT_BRANCH}" '. += [{"details": {"repo": $repoLink, "branch": $branch}}]' $RESULT_FILE > temp.json && mv temp.json results.json
+  - run:
+      name: Uploading Results
+      command: |
+        curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=IAC&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form 'file=@"results.json"'
+  - run:
+      name: Failing Pipeline If Scan Failed
+      environment:
+        INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      command: |
+        if [ "$CHECKOV_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" != "true" ]; then
+          echo "Scan failed. Exiting with failure."
+          exit 1
+        fi

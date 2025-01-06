@@ -1,0 +1,39 @@
+description: >
+  Accuknox IAC Scan
+parameters:
+  INPUT_FILE:
+    description: 'Specify a file for scanning; cannot be used with directory input. Filter runners by file type, e.g., ".tf" for Terraform.'
+    default: ""
+    type: string
+  INPUT_DIRECTORY:
+    description: 'Directory with infrastructure code and/or package manager files to scan'
+    default: "."
+    type: string
+  INPUT_COMPACT:
+    description: "Do not display code blocks in output"
+    default: true
+    type: boolean
+  INPUT_QUIET:
+    description: "Display only failed checks"
+    default: true
+    type: boolean
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+  INPUT_FRAMEWORK:
+    description: "Run only on a specific infrastructure, Supported: Kubernetes & Terraform"
+    default: ""
+    type: string
+executor: iac
+steps:
+  - checkout
+  - setup_remote_docker:
+      docker_layer_caching: true
+  - iac-scan:
+      INPUT_FILE: <<parameters.INPUT_FILE>>
+      INPUT_DIRECTORY: <<parameters.INPUT_DIRECTORY>>
+      INPUT_COMPACT: <<parameters.INPUT_COMPACT>>
+      INPUT_QUIET: <<parameters.INPUT_QUIET>>
+      INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      INPUT_FRAMEWORK: <<parameters.INPUT_FRAMEWORK>>
