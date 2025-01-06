@@ -1,0 +1,5 @@
+description: >
+  Executor for Accuknox DAST scan
+docker:
+  - image: 'zaproxy/zap-stable:latest' 
+    user: root

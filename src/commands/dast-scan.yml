@@ -1,0 +1,76 @@
+description: >
+  Accuknox DAST Scan
+parameters:
+  TARGET_URL:
+    description: "The URL of the web application to scan."
+    type: string
+  SEVERITY_THRESHOLD:
+    description: "The minimum severity level (e.g., High, Medium, Low, Informational) that will cause the pipeline to fail if present in the report."
+    default: "High"
+    type: string
+  DAST_SCAN_TYPE:
+    description: "Type of ZAP scan to run: 'baseline' or 'full-scan'."
+    default: "baseline"
+    type: string
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+steps:
+  - run:
+      name: Validation
+      command: |
+        if [[ -z "$ACCUKNOX_ENDPOINT" || -z "$ACCUKNOX_TENANT" || -z "$ACCUKNOX_LABEL" || -z "$ACCUKNOX_TOKEN" ]]; then
+          echo "Error: One or more required environment variables are empty."
+          echo "Please set ACCUKNOX_ENDPOINT, ACCUKNOX_TENANT, ACCUKNOX_LABEL, and ACCUKNOX_TOKEN."
+          exit 1
+        else
+          echo "All required environment variables are set."
+        fi
+  - run:
+      name: Prerequisites
+      command: |
+        apt -qq update -y
+        apt install -y jq curl
+  - run:
+      name: DAST Scan 
+      environment:
+        TARGET_URL: <<parameters.TARGET_URL>>
+        DAST_SCAN_TYPE: <<parameters.DAST_SCAN_TYPE>>
+      command: |
+        mkdir -p /zap/wrk
+        if [ "${DAST_SCAN_TYPE}" == "baseline" ]; then
+          SCAN_COMMAND="zap-baseline.py -t ${TARGET_URL} -J report.json -I"
+        else
+          SCAN_COMMAND="zap-full-scan.py -t ${TARGET_URL} -J report.json -I"
+        fi
+        $SCAN_COMMAND
+  - run:
+      name: Uploading Results
+      command: |
+        curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=ZAP&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form 'file=@"/zap/wrk/report.json"'
+  - run:
+      name: Failing Pipeline If Scan Failed
+      environment:
+        INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+        SEVERITY_THRESHOLD: <<parameters.SEVERITY_THRESHOLD>>
+      command: |
+        if [ "$INPUT_SOFT_FAIL" != "true" ]; then
+
+          case "${SEVERITY_THRESHOLD}" in
+            High)           RISK_CODE=3 ;;
+            Medium)         RISK_CODE=2 ;;
+            Low)            RISK_CODE=1 ;;
+            Informational)  RISK_CODE=0 ;;
+            *)              echo "Invalid severity threshold"; exit 1 ;;
+          esac
+
+          if jq -e --argjson risk_code "$RISK_CODE" \
+              '.site[].alerts[] | select(.riskcode|tonumber >= $risk_code)' /zap/wrk/report.json > /dev/null; then
+            echo "Error: Vulnerability with severity ${SEVERITY_THRESHOLD} or higher found in ZAP report."
+            exit 1
+          else
+            echo "No vulnerabilities with severity ${SEVERITY_THRESHOLD} or higher were found."
+          fi
+
+        fi

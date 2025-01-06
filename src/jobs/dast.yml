@@ -1,0 +1,28 @@
+description: >
+  Accuknox DAST Scan
+parameters:
+  TARGET_URL:
+    description: "The URL of the web application to scan."
+    type: string
+  SEVERITY_THRESHOLD:
+    description: "The minimum severity level (e.g., High, Medium, Low, Informational) that will cause the pipeline to fail if present in the report."
+    default: "High"
+    type: string
+  DAST_SCAN_TYPE:
+    description: "Type of ZAP scan to run: 'baseline' or 'full-scan'."
+    default: "baseline"
+    type: string
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+executor: dast
+steps:
+  - checkout
+  - setup_remote_docker:
+      docker_layer_caching: true
+  - dast-scan:
+      TARGET_URL: <<parameters.TARGET_URL>>
+      SEVERITY_THRESHOLD: <<parameters.SEVERITY_THRESHOLD>>
+      DAST_SCAN_TYPE: <<parameters.DAST_SCAN_TYPE>>
+      INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
