@@ -1,0 +1,87 @@
+description: >
+  Accuknox SAST Scan
+parameters:
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+  INLINE_SONARQUBE_SCAN:
+    description: "Peform Sonarqube scan"
+    default: true
+    type: boolean
+steps:
+  - run:
+      name: Validation
+      command: |
+        if [[ -z "$ACCUKNOX_ENDPOINT" || -z "$ACCUKNOX_TENANT" || -z "$ACCUKNOX_LABEL" || -z "$ACCUKNOX_TOKEN" || -z "$SONAR_HOST_URL" || -z "$SONAR_PROJECT_KEY" || -z "$SONAR_TOKEN" ]]; then
+          echo "Error: One or more required environment variables are empty."
+          echo "Please set ACCUKNOX_ENDPOINT, ACCUKNOX_TENANT, ACCUKNOX_LABEL, and ACCUKNOX_TOKEN."
+          echo "Please set SONAR_HOST_URL, SONAR_PROJECT_KEY, and SONAR_TOKEN."
+          exit 1
+        else
+          echo "All required environment variables are set."
+        fi
+
+  # Mount volume not working
+  - run:
+      name: Sonarqube Scan
+      environment:
+        GIT_DEPTH: "0"
+        INLINE_SONARQUBE_SCAN: <<parameters.INLINE_SONARQUBE_SCAN>>
+        INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      command: |
+        set +e  # Allow commands to fail without stopping the script
+        SONARQUBE_EXIT_CODE=$?
+
+        if [ "$INPUT_SOFT_FAIL" = 1 ]; then
+          QUALITY_GATE=""
+        else
+          QUALITY_GATE="-Dsonar.qualitygate.wait=True"
+        fi
+        if [ "$INLINE_SONARQUBE_SCAN" = 1 ]; then
+          echo "Starting SonarQube scan..."
+          docker run --rm -ti -d --name sonarqube \
+            -e GIT_DEPTH=${GIT_DEPTH}  \
+            -e SONAR_HOST_URL=${SONAR_HOST_URL}  \
+            -e SONAR_TOKEN=${SONAR_TOKEN} \
+            -e SONAR_SCANNER_OPTS="-Dsonar.projectKey=${SONAR_PROJECT_KEY} ${QUALITY_GATE}" \
+            --entrypoint bash \
+            sonarsource/sonar-scanner-cli
+          docker cp . sonarqube:/usr/src 
+          docker exec -ti sonarqube /usr/bin/entrypoint.sh
+          SONARQUBE_EXIT_CODE=$(docker exec -ti sonarqube echo $?)
+          docker stop sonarqube
+        else
+          echo "SonarQube scan is disabled."
+        fi
+        echo "export SONARQUBE_EXIT_CODE=$SONARQUBE_EXIT_CODE" >> $BASH_ENV
+  # Mount volume not working
+  - run:
+      name: Accuknox SAST Scan
+      command: |
+        docker run  --rm -ti -d --name accuknoxsast -e SQ_PROJECTS="${SONAR_PROJECT_KEY}" -e SQ_URL=${SONAR_HOST_URL} -e SQ_AUTH_TOKEN=${SONAR_TOKEN} -e REPORT_PATH=/app/data/ --entrypoint bash accuknox/sastjob:latest
+        docker exec -ti accuknoxsast mkdir -p /app/data/
+        docker exec -ti accuknoxsast python /app/sq-job.py
+        docker cp accuknoxsast:/app/data/ .
+        docker stop accuknoxsast
+  - run:
+      name: Uploading Results
+      command: |
+        for file in `ls -1 data/SQ-*.json`; do
+          curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=SQ&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form "file=@\"$file\""
+        done
+  - run:
+      name: Failing Pipeline If Scan Failed
+      environment:
+        INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      command: |
+          echo "INPUT_SOFT_FAIL=${INPUT_SOFT_FAIL:-unset}"
+          INPUT_SOFT_FAIL=${INPUT_SOFT_FAIL:-0}
+
+          SONARQUBE_EXIT_CODE=$(echo "$SONARQUBE_EXIT_CODE" | tr -d '\r')
+          if [ "$SONARQUBE_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" -ne 1 ]; then
+            echo "Scan failed. Exiting with failure."
+            exit 1
+          else
+            echo "Scan succeeded or soft fail is enabled. Continuing."
+          fi

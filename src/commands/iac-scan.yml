@@ -91,7 +91,7 @@ steps:
         fi
 
         # If INPUT_SOFT_FAIL is true, add --soft-fail
-        if [ "$INPUT_SOFT_FAIL" = true ]; then
+        if [ "$INPUT_SOFT_FAIL" -eq 1 ]; then
           CHECKOV_CMD="$CHECKOV_CMD --soft-fail"
         fi
 
@@ -133,7 +133,7 @@ steps:
       environment:
         INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
       command: |
-        if [ "$CHECKOV_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" != "true" ]; then
+        if [ "$CHECKOV_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" -ne 1 ]; then
           echo "Scan failed. Exiting with failure."
           exit 1
         fi

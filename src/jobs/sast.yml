@@ -1,0 +1,19 @@
+description: >
+  Accuknox SAST Scan
+parameters:
+  INPUT_SOFT_FAIL:
+    description: "Do not return an error code if there are failed checks"
+    default: true
+    type: boolean
+  INLINE_SONARQUBE_SCAN:
+    description: "Peform Sonarqube scan"
+    default: true
+    type: boolean
+executor: sast
+steps:
+  - checkout
+  - setup_remote_docker:
+      docker_layer_caching: true
+  - sast-scan:
+      INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
+      INLINE_SONARQUBE_SCAN: <<parameters.INLINE_SONARQUBE_SCAN>>

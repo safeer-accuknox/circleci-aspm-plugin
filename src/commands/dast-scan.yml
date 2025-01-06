@@ -55,7 +55,7 @@ steps:
         INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
         SEVERITY_THRESHOLD: <<parameters.SEVERITY_THRESHOLD>>
       command: |
-        if [ "$INPUT_SOFT_FAIL" != "true" ]; then
+        if [ "$INPUT_SOFT_FAIL" -ne 1  ]; then
 
           case "${SEVERITY_THRESHOLD}" in
             High)           RISK_CODE=3 ;;

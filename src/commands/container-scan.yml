@@ -77,7 +77,7 @@ steps:
       environment:
         INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
       command: |
-        if [ "$TRIVY_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" != "true" ]; then
+        if [ "$TRIVY_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" -ne 1  ]; then
           echo "Scan failed. Exiting with failure."
           exit 1
         fi
