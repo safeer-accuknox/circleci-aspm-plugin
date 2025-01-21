@@ -6,6 +6,7 @@ This CircleCI Plugin is built to run AccuKnox’s robust security scans, enablin
 * **IaC** (Infrastructure as Code) Security Checks  
 * **SAST** (Static Application Security Testing)  
 * **Container Scans**
+* **Secret Scans**
 
 With this plugin, you can automate security testing and integrate it seamlessly into your CI/CD pipelines for improved DevSecOps practices.
 
