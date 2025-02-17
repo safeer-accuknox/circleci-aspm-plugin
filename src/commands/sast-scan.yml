@@ -5,9 +5,9 @@ parameters:
     description: "Do not return an error code if there are failed checks"
     default: true
     type: boolean
-  INLINE_SONARQUBE_SCAN:
+  SKIP_SONAR_SCAN:
     description: "Peform Sonarqube scan"
-    default: true
+    default: false
     type: boolean
 steps:
   - run:
@@ -27,43 +27,52 @@ steps:
       name: Sonarqube Scan
       environment:
         GIT_DEPTH: "0"
-        INLINE_SONARQUBE_SCAN: <<parameters.INLINE_SONARQUBE_SCAN>>
+        SKIP_SONAR_SCAN: <<parameters.SKIP_SONAR_SCAN>>
         INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
       command: |
         set +e  # Allow commands to fail without stopping the script
-        SONARQUBE_EXIT_CODE=$?
+        SQ_EXIT_CODE=0
 
-        if [ "$INPUT_SOFT_FAIL" = 1 ]; then
-          QUALITY_GATE=""
-        else
-          QUALITY_GATE="-Dsonar.qualitygate.wait=True"
+        ORG_OPTION=""
+        if [ -n "$SONAR_ORGANIZATION_ID" ] && [ -n "$(echo "$SONAR_ORGANIZATION_ID" | tr -d ' ')" ]; then
+            ORG_OPTION="-Dsonar.organization=$SONAR_ORGANIZATION_ID"
         fi
-        if [ "$INLINE_SONARQUBE_SCAN" = 1 ]; then
+
+        if [ "$SKIP_SONAR_SCAN" = 0 ]; then
           echo "Starting SonarQube scan..."
           docker run --rm -ti -d --name sonarqube \
             -e GIT_DEPTH=${GIT_DEPTH}  \
             -e SONAR_HOST_URL=${SONAR_HOST_URL}  \
             -e SONAR_TOKEN=${SONAR_TOKEN} \
-            -e SONAR_SCANNER_OPTS="-Dsonar.projectKey=${SONAR_PROJECT_KEY} ${QUALITY_GATE}" \
+            -e SONAR_SCANNER_OPTS="-Dsonar.projectKey=${SONAR_PROJECT_KEY} ${ORG_OPTION} -Dsonar.qualitygate.wait=true" \
             --entrypoint bash \
             sonarsource/sonar-scanner-cli
           docker cp . sonarqube:/usr/src 
           docker exec -ti sonarqube /usr/bin/entrypoint.sh
-          SONARQUBE_EXIT_CODE=$(docker exec -ti sonarqube echo $?)
+          SQ_EXIT_CODE=$(docker exec -ti sonarqube echo $?)
           docker stop sonarqube
         else
           echo "SonarQube scan is disabled."
         fi
-        echo "export SONARQUBE_EXIT_CODE=$SONARQUBE_EXIT_CODE" >> $BASH_ENV
+        echo "export SQ_EXIT_CODE=$SQ_EXIT_CODE" >> $BASH_ENV
   # Mount volume not working
   - run:
       name: Accuknox SAST Scan
       command: |
-        docker run  --rm -ti -d --name accuknoxsast -e SQ_PROJECTS="${SONAR_PROJECT_KEY}" -e SQ_URL=${SONAR_HOST_URL} -e SQ_AUTH_TOKEN=${SONAR_TOKEN} -e REPORT_PATH=/app/data/ --entrypoint bash accuknox/sastjob:latest
+        set +e  # Allow commands to fail without stopping the script
+
+        AK_EXIT_CODE=0
+        ORG_OPTION=""
+        if [ -n "$SONAR_ORGANIZATION_ID" ] && [ -n "$(echo "$SONAR_ORGANIZATION_ID" | tr -d ' ')" ]; then
+          ORG_OPTION="-e SQ_ORG=$SONAR_ORGANIZATION_ID"
+        fi
+        docker run  --rm -ti -d --name accuknoxsast $ORG_OPTION -e SQ_PROJECTS="${SONAR_PROJECT_KEY}" -e SQ_URL=${SONAR_HOST_URL} -e SQ_AUTH_TOKEN=${SONAR_TOKEN} -e REPORT_PATH=/app/data/ --entrypoint bash accuknox/sastjob:latest
         docker exec -ti accuknoxsast mkdir -p /app/data/
         docker exec -ti accuknoxsast python /app/sq-job.py
+        AK_EXIT_CODE=$(docker exec -ti accuknoxsast echo $?)
         docker cp accuknoxsast:/app/data/ .
         docker stop accuknoxsast
+        echo "export AK_EXIT_CODE=$AK_EXIT_CODE" >> $BASH_ENV
   - run:
       name: Uploading Results
       command: |
@@ -75,13 +84,27 @@ steps:
       environment:
         INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
       command: |
-          echo "INPUT_SOFT_FAIL=${INPUT_SOFT_FAIL:-unset}"
-          INPUT_SOFT_FAIL=${INPUT_SOFT_FAIL:-0}
+          SQ_EXIT_CODE="${SQ_EXIT_CODE//[$'\t\r\n ']}"
+          AK_EXIT_CODE="${AK_EXIT_CODE//[$'\t\r\n ']}"
+          INPUT_SOFT_FAIL="${INPUT_SOFT_FAIL//[$'\t\r\n ']}"
 
-          SONARQUBE_EXIT_CODE=$(echo "$SONARQUBE_EXIT_CODE" | tr -d '\r')
-          if [ "$SONARQUBE_EXIT_CODE" -ne 0 ] && [ "$INPUT_SOFT_FAIL" -ne 1 ]; then
-            echo "Scan failed. Exiting with failure."
-            exit 1
+          FINAL_EXIT_CODE=0
+          if [ "$SQ_EXIT_CODE" -ne "0" ] || [ "$AK_EXIT_CODE" -ne "0" ]; then
+            FINAL_EXIT_CODE=$SQ_EXIT_CODE
+            if [ "$SQ_EXIT_CODE" -eq 0 ]; then
+              FINAL_EXIT_CODE=$AK_EXIT_CODE
+            fi
+          fi
+
+          
+          echo "FINAL_EXIT_CODE = $FINAL_EXIT_CODE"
+          if [ "$FINAL_EXIT_CODE" -ne 0 ]; then
+            if [ "$INPUT_SOFT_FAIL" = 1 ]; then
+              echo "Scan failed, but soft fail is enabled. Continuing..."
+            else
+              echo "Scan failed and soft fail is disabled. Exiting with failure."
+              exit 1
+            fi
           else
-            echo "Scan succeeded or soft fail is enabled. Continuing."
+            echo "Scan completed successfully."
           fi
