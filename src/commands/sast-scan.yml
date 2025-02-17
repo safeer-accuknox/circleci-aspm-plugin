@@ -9,9 +9,25 @@ parameters:
     description: "Peform Sonarqube scan"
     default: false
     type: boolean
+  REPOSITORY_URL:
+    description: "The URL of repository."
+    default: ""
+    type: string
+  REPOSITORY_COMMIT_ID:
+    description: "The SHA1 hash of the last commit of the current build."
+    default: ""
+    type: string
+  REPOSITORY_BRANCH:
+    description: "The name of the Git branch currently being built."
+    default: ""
+    type: string
 steps:
   - run:
       name: Validation
+      environment:
+        REPOSITORY_BRANCH: <<parameters.REPOSITORY_BRANCH>>
+        REPOSITORY_COMMIT_ID: <<parameters.REPOSITORY_COMMIT_ID>>
+        REPOSITORY_URL: <<parameters.REPOSITORY_URL>>
       command: |
         if [[ -z "$ACCUKNOX_ENDPOINT" || -z "$ACCUKNOX_TENANT" || -z "$ACCUKNOX_LABEL" || -z "$ACCUKNOX_TOKEN" || -z "$SONAR_HOST_URL" || -z "$SONAR_PROJECT_KEY" || -z "$SONAR_TOKEN" ]]; then
           echo "Error: One or more required environment variables are empty."
@@ -22,6 +38,18 @@ steps:
           echo "All required environment variables are set."
         fi
 
+        REPOSITORY_BRANCH="${REPOSITORY_BRANCH:-$CIRCLE_BRANCH}"
+        REPOSITORY_COMMIT_ID="${REPOSITORY_COMMIT_ID:-$CIRCLE_SHA1}"
+        REPOSITORY_URL="${REPOSITORY_URL:-$CIRCLE_REPOSITORY_URL}"
+        
+        if [[ -z "$REPOSITORY_URL" ]]; then
+          echo "The URL of the repository is empty, please set REPOSITORY_URL input"
+          exit 1
+        fi
+
+        echo "export REPOSITORY_URL=$REPOSITORY_URL" >> $BASH_ENV
+        echo "export REPOSITORY_COMMIT_ID=$REPOSITORY_COMMIT_ID" >> $BASH_ENV
+        echo "export REPOSITORY_BRANCH=$REPOSITORY_BRANCH" >> $BASH_ENV
   # Mount volume not working
   - run:
       name: Sonarqube Scan
@@ -77,6 +105,15 @@ steps:
       name: Uploading Results
       command: |
         for file in `ls -1 data/SQ-*.json`; do
+          jq --arg branch "$REPOSITORY_BRANCH" --arg commit_id "$REPOSITORY_COMMIT_ID" --arg repo_url "$REPOSITORY_URL" \
+          --arg build_url "$CIRCLE_BUILD_URL" \
+          '.repo_details = { 
+              "repository_url": $repo_url, 
+              "commit": $commit_id, 
+              "branch": $branch, 
+              "pipeline_url": $build_url 
+          }' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+
           curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=SQ&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form "file=@\"$file\""
         done
   - run:

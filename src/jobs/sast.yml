@@ -9,6 +9,18 @@ parameters:
     description: "Peform Sonarqube scan"
     default: false
     type: boolean
+  REPOSITORY_URL:
+    description: "The URL of repository."
+    default: ""
+    type: string
+  REPOSITORY_COMMIT_ID:
+    description: "The SHA1 hash of the last commit of the current build."
+    default: ""
+    type: string
+  REPOSITORY_BRANCH:
+    description: "The name of the Git branch currently being built."
+    default: ""
+    type: string
 executor: sast
 steps:
   - checkout
@@ -17,3 +29,6 @@ steps:
   - sast-scan:
       INPUT_SOFT_FAIL: <<parameters.INPUT_SOFT_FAIL>>
       SKIP_SONAR_SCAN: <<parameters.SKIP_SONAR_SCAN>>
+      REPOSITORY_URL: <<parameters.REPOSITORY_URL>>
+      REPOSITORY_COMMIT_ID: <<parameters.REPOSITORY_COMMIT_ID>>
+      REPOSITORY_BRANCH: <<parameters.REPOSITORY_BRANCH>>
