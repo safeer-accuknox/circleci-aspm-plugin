@@ -114,7 +114,7 @@ steps:
               "pipeline_url": $build_url 
           }' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 
-          curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=SQ&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form "file=@\"$file\""
+          curl --silent --show-error --fail --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=SQ&label_id=${ACCUKNOX_LABEL}&save_to_s3=true" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form "file=@\"$file\""
         done
   - run:
       name: Failing Pipeline If Scan Failed

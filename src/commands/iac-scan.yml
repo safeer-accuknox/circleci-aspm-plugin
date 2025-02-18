@@ -127,7 +127,7 @@ steps:
   - run:
       name: Uploading Results
       command: |
-        curl --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=IAC&label_id=${ACCUKNOX_LABEL}&save_to_s3=false" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form 'file=@"results.json"'
+        curl --silent --show-error --fail --location --request POST "https://${ACCUKNOX_ENDPOINT}/api/v1/artifact/?tenant_id=${ACCUKNOX_TENANT}&data_type=IAC&label_id=${ACCUKNOX_LABEL}&save_to_s3=true" --header "Tenant-Id: ${ACCUKNOX_TENANT}" --header "Authorization: Bearer ${ACCUKNOX_TOKEN}" --form 'file=@"results.json"'
   - run:
       name: Failing Pipeline If Scan Failed
       environment:
